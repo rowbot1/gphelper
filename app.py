@@ -1,23 +1,41 @@
 import os
 import streamlit as st
-import pinecone
-from groq import Groq
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
+# Try to import required libraries
+try:
+    import pinecone
+    from groq import Groq
+    from sentence_transformers import SentenceTransformer
+except ImportError as e:
+    st.error(f"Failed to import required library: {e}")
+    st.stop()
+
 # Initialize Pinecone
-pc = pinecone.Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
-index = pc.Index(os.getenv('PINECONE_INDEX_NAME'))
+try:
+    pinecone.init(api_key=os.getenv('PINECONE_API_KEY'), environment=os.getenv('PINECONE_ENVIRONMENT'))
+    index = pinecone.Index(os.getenv('PINECONE_INDEX_NAME'))
+except Exception as e:
+    st.error(f"Failed to initialize Pinecone: {e}")
+    st.stop()
 
 # Initialize Groq
-client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+try:
+    client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+except Exception as e:
+    st.error(f"Failed to initialize Groq: {e}")
+    st.stop()
 
 # Initialize the embedding model
-model = SentenceTransformer('all-mpnet-base-v2')
+try:
+    model = SentenceTransformer('all-mpnet-base-v2')
+except Exception as e:
+    st.error(f"Failed to initialize SentenceTransformer: {e}")
+    st.stop()
 
 def get_embedding(text):
     return model.encode(text).tolist()
@@ -27,22 +45,26 @@ def query_pinecone(embedding):
     return results['matches']
 
 def generate_response(prompt):
-    completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant for NHS GPs. Provide diagnoses and treatment plans based on patient symptoms.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        model="mixtral-8x7b-32768",
-        temperature=0.5,
-        max_tokens=1000,
-    )
-    return completion.choices[0].message.content
+    try:
+        completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant for NHS GPs. Provide diagnoses and treatment plans based on patient symptoms.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model="mixtral-8x7b-32768",
+            temperature=0.5,
+            max_tokens=1000,
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        st.error(f"Failed to generate response: {e}")
+        return None
 
 st.title("NHS GP Assistant")
 
@@ -50,16 +72,20 @@ symptoms = st.text_area("Please enter the patient's symptoms:")
 
 if st.button("Generate Diagnosis and Treatment Plan"):
     if symptoms:
-        embedding = get_embedding(symptoms)
-        similar_cases = query_pinecone(embedding)
-        
-        context = "Similar cases:\n" + "\n".join([case.get('metadata', {}).get('text', 'No text available') for case in similar_cases])
-        prompt = f"Given the following patient symptoms:\n{symptoms}\n\nAnd considering these similar cases:\n{context}\n\nProvide a possible diagnosis and treatment plan."
-        
-        response = generate_response(prompt)
-        
-        st.subheader("Diagnosis and Treatment Plan")
-        st.write(response)
+        try:
+            embedding = get_embedding(symptoms)
+            similar_cases = query_pinecone(embedding)
+            
+            context = "Similar cases:\n" + "\n".join([case.get('metadata', {}).get('text', 'No text available') for case in similar_cases])
+            prompt = f"Given the following patient symptoms:\n{symptoms}\n\nAnd considering these similar cases:\n{context}\n\nProvide a possible diagnosis and treatment plan."
+            
+            response = generate_response(prompt)
+            
+            if response:
+                st.subheader("Diagnosis and Treatment Plan")
+                st.write(response)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
     else:
         st.warning("Please enter the patient's symptoms.")
 
