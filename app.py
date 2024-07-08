@@ -1,80 +1,75 @@
+mport os
 import streamlit as st
 import numpy as np
-from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
-import torch
-import torch.nn as nn
-
-# Pinecone settings
-PINECONE_API_KEY = st.secrets["pinecone"]["api_key"]
-PINECONE_ENVIRONMENT = st.secrets["pinecone"]["environment"]
-PINECONE_INDEX_NAME = st.secrets["pinecone"]["index_name"]
-
+from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+# Try to import required libraries
+try:
+    import pinecone
+    from groq import Groq
+    from sentence_transformers import SentenceTransformer
+except ImportError as e:
+    st.error(f"Failed to import required library: {e}")
+    st.stop()
 # Initialize Pinecone
-pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-index = pc.Index(PINECONE_INDEX_NAME)
-
-# Initialize the base embedding model
-base_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# Custom layer to expand embeddings to 3072 dimensions
-class EmbeddingExpander(nn.Module):
-    def __init__(self, input_dim=384, output_dim=3072):
-        super(EmbeddingExpander, self).__init__()
-        self.fc = nn.Linear(input_dim, output_dim)
-    
-    def forward(self, x):
-        return self.fc(x)
-
-# Initialize the embedding expander
-embedding_expander = EmbeddingExpander()
-
-@st.cache_resource
-def get_models():
-    return base_model, embedding_expander
-
+try:
+    pinecone.init(api_key=os.getenv('PINECONE_API_KEY'), environment=os.getenv('PINECONE_ENVIRONMENT'))
+    index = pinecone.Index(os.getenv('PINECONE_INDEX_NAME'))
+except Exception as e:
+    st.error(f"Failed to initialize Pinecone: {e}")
+    st.stop()
+# Initialize Groq
+try:
+    client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+except Exception as e:
+    st.error(f"Failed to initialize Groq: {e}")
+    st.stop()
+# Initialize the embedding model
+try:
+    model = SentenceTransformer('all-mpnet-base-v2')
+except Exception as e:
+    st.error(f"Failed to initialize SentenceTransformer: {e}")
+    st.stop()
 def get_embedding(text):
-    base_model, embedding_expander = get_models()
-    # Get base embedding
-    base_embedding = base_model.encode(text)
-    # Expand embedding
-    with torch.no_grad():
-        expanded_embedding = embedding_expander(torch.tensor(base_embedding).float()).numpy()
-    
-    # Ensure the vector is exactly 3072 dimensions
-    if len(expanded_embedding) < 3072:
-        expanded_embedding = np.pad(expanded_embedding, (0, 3072 - len(expanded_embedding)))
-    elif len(expanded_embedding) > 3072:
-        expanded_embedding = expanded_embedding[:3072]
-    
-    return expanded_embedding.tolist()
-
+    return model.encode(text).tolist()
 def query_pinecone(embedding):
+    results = index.query(vector=embedding, top_k=5, include_metadata=True)
+    return results['matches']
+def generate_response(prompt):
     try:
-        results = index.query(
-            vector=embedding,
-            top_k=5,
-            include_metadata=True
+        completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant for NHS GPs. Provide diagnoses and treatment plans based on patient symptoms.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model="mixtral-8x7b-32768",
+            temperature=0.5,
+            max_tokens=1000,
         )
-        return results['matches']
+        return completion.choices[0].message.content
     except Exception as e:
-        st.error(f"Error querying Pinecone: {e}")
-        return []
-
-# ... rest of your Streamlit app code ...
-
+        st.error(f"Failed to generate response: {e}")
+        return None
+st.title("NHS GP Assistant")
+symptoms = st.text_area("Please enter the patient's symptoms:")
 if st.button("Generate Diagnosis and Treatment Plan"):
     if symptoms:
         try:
             embedding = get_embedding(symptoms)
-            st.write(f"Embedding dimension: {len(embedding)}")  # Debug print
             similar_cases = query_pinecone(embedding)
-            
+
             context = "Similar cases:\n" + "\n".join([case.get('metadata', {}).get('text', 'No text available') for case in similar_cases])
             prompt = f"Given the following patient symptoms:\n{symptoms}\n\nAnd considering these similar cases:\n{context}\n\nProvide a possible diagnosis and treatment plan."
-            
+
             response = generate_response(prompt)
-            
+
             if response:
                 st.subheader("Diagnosis and Treatment Plan")
                 st.write(response)
@@ -82,5 +77,4 @@ if st.button("Generate Diagnosis and Treatment Plan"):
             st.error(f"An error occurred: {e}")
     else:
         st.warning("Please enter the patient's symptoms.")
-
-# ... rest of your Streamlit app code ...
+st.sidebar.warning("Note: This app is for educational purposes only. Always consult with a qualified medical professional for accurate diagnoses and treatment plans.")
