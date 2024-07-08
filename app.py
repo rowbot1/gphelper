@@ -14,8 +14,7 @@ except ImportError as e:
 try:
     pinecone.init(
         api_key=st.secrets["pinecone"]["api_key"],
-        environment=st.secrets["pinecone"]["environment"],
-        host=st.secrets["pinecone"]["host"]
+        environment=st.secrets["pinecone"]["environment"]
     )
     index = pinecone.Index(st.secrets["pinecone"]["index_name"])
 except Exception as e:
@@ -40,13 +39,16 @@ def get_embedding(text):
     return model.encode(text).tolist()
 
 def query_pinecone(embedding):
-    results = index.query(
-        vector=embedding, 
-        top_k=5, 
-        include_metadata=True,
-        namespace=''  # Add this line if you're not using namespaces
-    )
-    return results['matches']
+    try:
+        results = index.query(
+            vector=embedding, 
+            top_k=5, 
+            include_metadata=True
+        )
+        return results['matches']
+    except Exception as e:
+        st.error(f"Error querying Pinecone: {e}")
+        return []
 
 def generate_response(prompt):
     try:
