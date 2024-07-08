@@ -49,9 +49,9 @@ def get_expanded_embedding(text):
     st.write(f"Debug: Expanded embedding shape: {expanded_embedding.shape}")
     return expanded_embedding.tolist()
 
-def query_pinecone(embedding, similarity_threshold=0.5):  # Lowered threshold to 0.5
+def query_pinecone(embedding, similarity_threshold=0.05):
     try:
-        results = index.query(vector=embedding, top_k=5, include_metadata=True)
+        results = index.query(vector=embedding, top_k=10, include_metadata=True)
         st.write(f"Debug: Raw Pinecone results: {results}")
         filtered_results = [match for match in results['matches'] if match['score'] >= similarity_threshold]
         st.write(f"Debug: Filtered results: {filtered_results}")
@@ -62,20 +62,20 @@ def query_pinecone(embedding, similarity_threshold=0.5):  # Lowered threshold to
         return []
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def generate_response(symptoms, context):
+def generate_response(patient_info, context, use_rag):
     try:
         system_message = """You are an AI assistant for NHS GPs, designed to provide detailed analysis of patient conditions based on symptoms and similar cases. Your responses should be structured, comprehensive, and medically accurate, while emphasizing the importance of clinical judgment and in-person examination."""
 
         user_prompt = f"""Please analyze the following patient case:
 
-1. Patient Symptoms:
-{symptoms}
+1. Patient Information:
+{patient_info}
 
 2. Similar Cases from Database:
 {context}
 
 3. Analysis Structure:
-   a) Possible Diagnosis: Provide one or more potential diagnoses, explaining the reasoning behind each. Reference specific symptoms and similar cases that support these diagnoses.
+   a) Possible Diagnosis: Provide one or more potential diagnoses, explaining the reasoning behind each. If using RAG, reference specific similar cases that support these diagnoses.
    b) Differential Diagnosis: Briefly mention other conditions that might present similarly and explain why they are less likely.
    c) Recommended Tests: Suggest any diagnostic tests or examinations that could confirm or rule out the proposed diagnoses.
    d) Treatment Plan: Outline a comprehensive treatment plan, including:
@@ -84,13 +84,13 @@ def generate_response(symptoms, context):
       - Follow-up recommendations
    e) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition requiring immediate attention.
    f) Patient Education: Provide brief, clear information about the condition(s) that the GP can use to educate the patient.
+   g) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
 
 4. Important Notes:
-   - Always reference the specific case numbers when using information from the similar cases.
+   - {'Use the similar cases provided to inform your analysis.' if use_rag else 'No similar cases were found in the database. Base your analysis on general medical knowledge.'}
    - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
    - Emphasize the importance of clinical judgment and the need for in-person examination.
    - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
-   - Be as specific as possible and very useful output for a GP.
 
 Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
 
@@ -117,9 +117,9 @@ Please provide your analysis in a clear, structured format, using medical termin
 def check_pinecone_index():
     try:
         stats = index.describe_index_stats()
-        st.write(f"Pinecone index stats: {stats}")
+        st.sidebar.write(f"Pinecone index stats: {stats}")
     except Exception as e:
-        st.error(f"Failed to get Pinecone index stats: {e}")
+        st.sidebar.error(f"Failed to get Pinecone index stats: {e}")
 
 st.title(st.secrets["app"]["name"])
 
@@ -129,18 +129,32 @@ check_pinecone_index()
 if 'diagnosis' not in st.session_state:
     st.session_state.diagnosis = None
 
+st.subheader("Patient Information")
 symptoms = st.text_area("Please enter the patient's symptoms:")
+age = st.number_input("Patient's age:", min_value=0, max_value=120, value=30)
+gender = st.selectbox("Patient's gender:", ["Male", "Female", "Other"])
+duration = st.text_input("Duration of symptoms:")
+medical_history = st.text_area("Relevant medical history:")
+
+patient_info = f"""
+Symptoms: {symptoms}
+Age: {age}
+Gender: {gender}
+Duration of symptoms: {duration}
+Medical history: {medical_history}
+"""
 
 if st.button("Generate Diagnosis and Treatment Plan"):
     if symptoms:
         try:
-            embedding = get_expanded_embedding(symptoms)
+            embedding = get_expanded_embedding(patient_info)
             similar_cases = query_pinecone(embedding)
             
             st.subheader("Similar Cases from Database:")
             if not similar_cases:
                 st.write("No sufficiently similar cases found in the database.")
                 context = "No similar cases available."
+                use_rag = False
             else:
                 context = "Similar cases:\n"
                 for i, case in enumerate(similar_cases, 1):
@@ -148,8 +162,9 @@ if st.button("Generate Diagnosis and Treatment Plan"):
                     st.write(case.get('metadata', {}).get('text', 'No text available'))
                     st.write("---")
                     context += f"Case {i}: " + case.get('metadata', {}).get('text', 'No text available') + "\n\n"
+                use_rag = True
             
-            st.session_state.diagnosis = generate_response(symptoms, context)
+            st.session_state.diagnosis = generate_response(patient_info, context, use_rag)
         except Exception as e:
             st.error(f"An error occurred: {e}")
     else:
@@ -158,5 +173,13 @@ if st.button("Generate Diagnosis and Treatment Plan"):
 if st.session_state.diagnosis:
     st.subheader("Diagnosis and Treatment Plan")
     st.write(st.session_state.diagnosis)
+
+    # Feedback mechanism
+    feedback = st.radio("Was this diagnosis helpful?", ("Yes", "No"))
+    if feedback == "No":
+        improvement = st.text_area("Please provide feedback on how we can improve:")
+        if st.button("Submit Feedback"):
+            # Here you would typically save this feedback to a database
+            st.success("Thank you for your feedback!")
 
 st.sidebar.warning("Note: This app is for educational purposes only. Always consult with a qualified medical professional for accurate diagnoses and treatment plans.")
