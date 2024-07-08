@@ -90,6 +90,7 @@ def generate_response(symptoms, context):
    - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
    - Emphasize the importance of clinical judgment and the need for in-person examination.
    - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
+   - Be as specific as possible and very useful output for a GP.
 
 Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
 
