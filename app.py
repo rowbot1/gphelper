@@ -1,14 +1,32 @@
 import streamlit as st
 import numpy as np
+import logging
 
-# Try to import required libraries
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Wrap imports in try-except blocks
 try:
     import pinecone
-    from groq import Groq
-    from sentence_transformers import SentenceTransformer
+    logger.info("Pinecone imported successfully")
 except ImportError as e:
-    st.error(f"Failed to import required library: {e}")
-    st.stop()
+    logger.error(f"Failed to import Pinecone: {e}")
+    st.error("Failed to import Pinecone. Please check your installation.")
+
+try:
+    from groq import Groq
+    logger.info("Groq imported successfully")
+except ImportError as e:
+    logger.error(f"Failed to import Groq: {e}")
+    st.error("Failed to import Groq. Please check your installation.")
+
+try:
+    from sentence_transformers import SentenceTransformer
+    logger.info("SentenceTransformer imported successfully")
+except ImportError as e:
+    logger.error(f"Failed to import SentenceTransformer: {e}")
+    st.error("Failed to import SentenceTransformer. Please check your installation.")
 
 # Initialize Pinecone
 try:
@@ -17,26 +35,34 @@ try:
         environment=st.secrets["pinecone"]["environment"]
     )
     index = pinecone.Index(st.secrets["pinecone"]["index_name"])
+    logger.info("Pinecone initialized successfully")
 except Exception as e:
+    logger.error(f"Failed to initialize Pinecone: {e}")
     st.error(f"Failed to initialize Pinecone: {e}")
-    st.stop()
 
 # Initialize Groq
 try:
     client = Groq(api_key=st.secrets["groq"]["api_key"])
+    logger.info("Groq initialized successfully")
 except Exception as e:
+    logger.error(f"Failed to initialize Groq: {e}")
     st.error(f"Failed to initialize Groq: {e}")
-    st.stop()
 
 # Initialize the embedding model
 try:
     model = SentenceTransformer('all-mpnet-base-v2')
+    logger.info("SentenceTransformer model initialized successfully")
 except Exception as e:
-    st.error(f"Failed to initialize SentenceTransformer: {e}")
-    st.stop()
+    logger.error(f"Failed to initialize SentenceTransformer model: {e}")
+    st.error(f"Failed to initialize SentenceTransformer model: {e}")
 
 def get_embedding(text):
-    return model.encode(text).tolist()
+    try:
+        return model.encode(text).tolist()
+    except Exception as e:
+        logger.error(f"Error in get_embedding: {e}")
+        st.error(f"Error in get_embedding: {e}")
+        return []
 
 def query_pinecone(embedding):
     try:
@@ -47,6 +73,7 @@ def query_pinecone(embedding):
         )
         return results['matches']
     except Exception as e:
+        logger.error(f"Error querying Pinecone: {e}")
         st.error(f"Error querying Pinecone: {e}")
         return []
 
@@ -69,6 +96,7 @@ def generate_response(prompt):
         )
         return completion.choices[0].message.content
     except Exception as e:
+        logger.error(f"Failed to generate response: {e}")
         st.error(f"Failed to generate response: {e}")
         return None
 
@@ -91,6 +119,7 @@ if st.button("Generate Diagnosis and Treatment Plan"):
                 st.subheader("Diagnosis and Treatment Plan")
                 st.write(response)
         except Exception as e:
+            logger.error(f"An error occurred: {e}")
             st.error(f"An error occurred: {e}")
     else:
         st.warning("Please enter the patient's symptoms.")
