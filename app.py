@@ -48,10 +48,11 @@ def get_expanded_embedding(text):
         expanded_embedding = embedding_expander(base_embedding).cpu().numpy()
     return expanded_embedding.tolist()
 
-def query_pinecone(embedding):
+def query_pinecone(embedding, similarity_threshold=0.7):
     try:
         results = index.query(vector=embedding, top_k=5, include_metadata=True)
-        return results['matches']
+        filtered_results = [match for match in results['matches'] if match['score'] >= similarity_threshold]
+        return filtered_results
     except Exception as e:
         st.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
         return []
@@ -63,7 +64,7 @@ def generate_response(prompt):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant for NHS GPs. Provide diagnoses and treatment plans based on patient symptoms.",
+                    "content": "You are a helpful assistant for NHS GPs. Provide diagnoses and treatment plans based on patient symptoms. Always reference the similar cases provided, using their case numbers.",
                 },
                 {
                     "role": "user",
@@ -91,11 +92,27 @@ if st.button("Generate Diagnosis and Treatment Plan"):
         try:
             embedding = get_expanded_embedding(symptoms)
             similar_cases = query_pinecone(embedding)
+            
+            st.subheader("Similar Cases from Database:")
             if not similar_cases:
+                st.write("No sufficiently similar cases found in the database.")
                 context = "No similar cases available."
             else:
-                context = "Similar cases:\n" + "\n".join([case.get('metadata', {}).get('text', 'No text available') for case in similar_cases])
-            prompt = f"Given the following patient symptoms:\n{symptoms}\n\nAnd considering these similar cases:\n{context}\n\nProvide a possible diagnosis and treatment plan."
+                context = "Similar cases:\n"
+                for i, case in enumerate(similar_cases, 1):
+                    st.write(f"Case {i} (Similarity: {case['score']:.2f}):")
+                    st.write(case.get('metadata', {}).get('text', 'No text available'))
+                    st.write("---")
+                    context += f"Case {i}: " + case.get('metadata', {}).get('text', 'No text available') + "\n\n"
+            
+            prompt = f"""Given the following patient symptoms:
+{symptoms}
+
+And considering these similar cases from our database:
+{context}
+
+Provide a possible diagnosis and treatment plan. Make sure to reference the specific case numbers when using information from the similar cases."""
+            
             st.session_state.diagnosis = generate_response(prompt)
         except Exception as e:
             st.error(f"An error occurred: {e}")
