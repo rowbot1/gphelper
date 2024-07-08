@@ -15,14 +15,16 @@ try:
     api_key = st.secrets["pinecone"]["api_key"]
     environment = st.secrets["pinecone"]["environment"]
     index_name = st.secrets["pinecone"]["index_name"]
-    
+
+    # Create Pinecone instance
     pc = Pinecone(api_key=api_key)
-    
-    if index_name not in [index['name'] for index in pc.list_indexes().indexes]:
+
+    # List and create index if not exists
+    if index_name not in [index.name for index in pc.list_indexes()]:
         pc.create_index(
             name=index_name,
-            dimension=1536,  # Adjust this dimension based on your specific needs
-            metric='euclidean',
+            dimension=768,  # Adjusted dimension to match the embedding model output
+            metric='cosine',  # Metric can be 'euclidean', 'cosine', etc.
             spec=ServerlessSpec(
                 cloud=st.secrets.get("PINECONE_CLOUD", 'aws'),
                 region=st.secrets.get("PINECONE_REGION", 'us-west-2')
@@ -57,8 +59,12 @@ def get_embedding(text):
     return model.encode(text).tolist()
 
 def query_pinecone(embedding):
-    results = index.query(vector=embedding, top_k=5, include_metadata=True)
-    return results['matches']
+    try:
+        results = index.query(vector=embedding, top_k=5, include_metadata=True)
+        return results['matches']
+    except Exception as e:
+        st.error(f"Error querying Pinecone: {e}")
+        return []
 
 def generate_response(prompt):
     try:
