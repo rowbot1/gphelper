@@ -3,3 +3,4 @@ numpy
 pinecone-client
 groq
 sentence-transformers
+torch
