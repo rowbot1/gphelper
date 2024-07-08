@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # Wrap imports in try-except blocks
 try:
-    import pinecone
+    from pinecone import Pinecone
     logger.info("Pinecone imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import Pinecone: {e}")
@@ -30,11 +30,8 @@ except ImportError as e:
 
 # Initialize Pinecone
 try:
-    pinecone.init(
-        api_key=st.secrets["pinecone"]["api_key"],
-        environment=st.secrets["pinecone"]["environment"]
-    )
-    index = pinecone.Index(st.secrets["pinecone"]["index_name"])
+    pc = Pinecone(api_key=st.secrets["pinecone"]["api_key"])
+    index = pc.Index(st.secrets["pinecone"]["index_name"])
     logger.info("Pinecone initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize Pinecone: {e}")
