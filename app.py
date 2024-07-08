@@ -1,4 +1,8 @@
 import streamlit as st
+
+# Set page config at the very beginning
+st.set_page_config(page_title="NHS GP Assistant", layout="wide")
+
 import numpy as np
 from pinecone import Pinecone
 from groq import Groq
@@ -118,7 +122,7 @@ Please provide your analysis in a clear, structured format, using medical termin
         st.error(f"Failed to generate response: {e}")
         return None
 
-st.set_page_config(page_title="NHS GP Assistant", layout="wide")
+# Main app
 st.title("NHS GP Assistant")
 
 # Create two columns
