@@ -46,15 +46,19 @@ def get_expanded_embedding(text):
     with torch.no_grad():
         base_embedding = base_model.encode(text, convert_to_tensor=True).to(device)
         expanded_embedding = embedding_expander(base_embedding).cpu().numpy()
+    st.write(f"Debug: Expanded embedding shape: {expanded_embedding.shape}")
     return expanded_embedding.tolist()
 
-def query_pinecone(embedding, similarity_threshold=0.7):
+def query_pinecone(embedding, similarity_threshold=0.5):  # Lowered threshold to 0.5
     try:
         results = index.query(vector=embedding, top_k=5, include_metadata=True)
+        st.write(f"Debug: Raw Pinecone results: {results}")
         filtered_results = [match for match in results['matches'] if match['score'] >= similarity_threshold]
+        st.write(f"Debug: Filtered results: {filtered_results}")
         return filtered_results
     except Exception as e:
         st.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
+        st.error(f"Detailed error: {str(e)}")
         return []
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
@@ -109,7 +113,17 @@ Please provide your analysis in a clear, structured format, using medical termin
         st.error(f"Failed to generate response: {e}")
         return None
 
+def check_pinecone_index():
+    try:
+        stats = index.describe_index_stats()
+        st.write(f"Pinecone index stats: {stats}")
+    except Exception as e:
+        st.error(f"Failed to get Pinecone index stats: {e}")
+
 st.title(st.secrets["app"]["name"])
+
+# Check Pinecone index at the start
+check_pinecone_index()
 
 if 'diagnosis' not in st.session_state:
     st.session_state.diagnosis = None
