@@ -94,7 +94,7 @@ with col1:
     Gender: {gender}
     Duration of symptoms: {duration}
     Medical history: {medical_history}
-    """
+    ""
 
     if st.button("Generate Diagnosis and Treatment Plan"):
         if symptoms:
