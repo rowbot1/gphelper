@@ -49,45 +49,53 @@ def get_expanded_embedding(text):
     st.write(f"Debug: Expanded embedding shape: {expanded_embedding.shape}")
     return expanded_embedding.tolist()
 
-def query_pinecone(embedding, similarity_threshold=0.05):
+def query_pinecone(embedding, similarity_threshold=0.01):  # Lowered threshold significantly
     try:
-        results = index.query(vector=embedding, top_k=10, include_metadata=True)
-        st.write(f"Debug: Raw Pinecone results: {results}")
+        results = index.query(vector=embedding, top_k=20, include_metadata=True)  # Increased top_k
+        st.sidebar.write(f"Debug: Raw Pinecone results: {results}")
         filtered_results = [match for match in results['matches'] if match['score'] >= similarity_threshold]
-        st.write(f"Debug: Filtered results: {filtered_results}")
+        st.sidebar.write(f"Debug: Filtered results: {filtered_results}")
         return filtered_results
     except Exception as e:
-        st.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
-        st.error(f"Detailed error: {str(e)}")
+        st.sidebar.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
+        st.sidebar.error(f"Detailed error: {str(e)}")
         return []
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def generate_response(patient_info, context, use_rag):
-    try:
-        system_message = """You are an AI assistant for NHS GPs, designed to provide detailed analysis of patient conditions based on symptoms and similar cases. Your responses should be structured, comprehensive, and medically accurate, while emphasizing the importance of clinical judgment and in-person examination."""
+def extract_relevant_info(similar_cases):
+    relevant_info = ""
+    for i, case in enumerate(similar_cases, 1):
+        case_text = case.get('metadata', {}).get('text', 'No text available')
+        relevant_info += f"Case {i} (Similarity: {case['score']:.4f}):\n{case_text}\n\n"
+    return relevant_info
 
-        user_prompt = f"""Please analyze the following patient case:
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def generate_response(patient_info, similar_cases_info):
+    try:
+        system_message = """You are an AI assistant for NHS GPs, designed to provide detailed analysis of patient conditions based on symptoms and similar cases. Your responses should be structured, comprehensive, and medically accurate, while emphasizing the importance of clinical judgment and in-person examination. Always reference the provided similar cases in your analysis."""
+
+        user_prompt = f"""Please analyze the following patient case and similar cases:
 
 1. Patient Information:
 {patient_info}
 
 2. Similar Cases from Database:
-{context}
+{similar_cases_info}
 
 3. Analysis Structure:
-   a) Possible Diagnosis: Provide one or more potential diagnoses, explaining the reasoning behind each. If using RAG, reference specific similar cases that support these diagnoses.
-   b) Differential Diagnosis: Briefly mention other conditions that might present similarly and explain why they are less likely.
-   c) Recommended Tests: Suggest any diagnostic tests or examinations that could confirm or rule out the proposed diagnoses.
-   d) Treatment Plan: Outline a comprehensive treatment plan, including:
+   a) Relevant Information from Similar Cases: Summarize key points from the similar cases that are relevant to this patient's symptoms. Reference specific case numbers.
+   b) Possible Diagnosis: Provide potential diagnoses, explaining the reasoning behind each. Reference specific symptoms and similar cases that support these diagnoses.
+   c) Differential Diagnosis: Mention other conditions that might present similarly and explain why they are less likely, referencing similar cases if applicable.
+   d) Recommended Tests: Suggest diagnostic tests or examinations, referencing any tests mentioned in similar cases that were helpful.
+   e) Treatment Plan: Outline a treatment plan, including:
       - Medications (if applicable), with dosages and duration
       - Lifestyle modifications or self-care instructions
       - Follow-up recommendations
-   e) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition requiring immediate attention.
-   f) Patient Education: Provide brief, clear information about the condition(s) that the GP can use to educate the patient.
-   g) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
+   f) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition, referencing similar cases if they showed any critical developments.
+   g) Patient Education: Provide information about the condition(s) for patient education, incorporating any useful educational points from similar cases.
+   h) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
 
 4. Important Notes:
-   - {'Use the similar cases provided to inform your analysis.' if use_rag else 'No similar cases were found in the database. Base your analysis on general medical knowledge.'}
+   - Always reference the specific case numbers when using information from the similar cases.
    - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
    - Emphasize the importance of clinical judgment and the need for in-person examination.
    - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
@@ -153,18 +161,12 @@ if st.button("Generate Diagnosis and Treatment Plan"):
             st.subheader("Similar Cases from Database:")
             if not similar_cases:
                 st.write("No sufficiently similar cases found in the database.")
-                context = "No similar cases available."
-                use_rag = False
+                similar_cases_info = "No similar cases available."
             else:
-                context = "Similar cases:\n"
-                for i, case in enumerate(similar_cases, 1):
-                    st.write(f"Case {i} (Similarity: {case['score']:.2f}):")
-                    st.write(case.get('metadata', {}).get('text', 'No text available'))
-                    st.write("---")
-                    context += f"Case {i}: " + case.get('metadata', {}).get('text', 'No text available') + "\n\n"
-                use_rag = True
+                similar_cases_info = extract_relevant_info(similar_cases)
+                st.write(similar_cases_info)
             
-            st.session_state.diagnosis = generate_response(patient_info, context, use_rag)
+            st.session_state.diagnosis = generate_response(patient_info, similar_cases_info)
         except Exception as e:
             st.error(f"An error occurred: {e}")
     else:
