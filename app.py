@@ -58,17 +58,46 @@ def query_pinecone(embedding, similarity_threshold=0.7):
         return []
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def generate_response(prompt):
+def generate_response(symptoms, context):
     try:
+        system_message = """You are an AI assistant for NHS GPs, designed to provide detailed analysis of patient conditions based on symptoms and similar cases. Your responses should be structured, comprehensive, and medically accurate, while emphasizing the importance of clinical judgment and in-person examination."""
+
+        user_prompt = f"""Please analyze the following patient case:
+
+1. Patient Symptoms:
+{symptoms}
+
+2. Similar Cases from Database:
+{context}
+
+3. Analysis Structure:
+   a) Possible Diagnosis: Provide one or more potential diagnoses, explaining the reasoning behind each. Reference specific symptoms and similar cases that support these diagnoses.
+   b) Differential Diagnosis: Briefly mention other conditions that might present similarly and explain why they are less likely.
+   c) Recommended Tests: Suggest any diagnostic tests or examinations that could confirm or rule out the proposed diagnoses.
+   d) Treatment Plan: Outline a comprehensive treatment plan, including:
+      - Medications (if applicable), with dosages and duration
+      - Lifestyle modifications or self-care instructions
+      - Follow-up recommendations
+   e) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition requiring immediate attention.
+   f) Patient Education: Provide brief, clear information about the condition(s) that the GP can use to educate the patient.
+
+4. Important Notes:
+   - Always reference the specific case numbers when using information from the similar cases.
+   - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
+   - Emphasize the importance of clinical judgment and the need for in-person examination.
+   - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
+
+Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
+
         completion = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant for NHS GPs. Provide diagnoses and treatment plans based on patient symptoms. Always reference the similar cases provided, using their case numbers.",
+                    "content": system_message,
                 },
                 {
                     "role": "user",
-                    "content": prompt,
+                    "content": user_prompt,
                 }
             ],
             model="mixtral-8x7b-32768",
