@@ -134,7 +134,11 @@ if st.button("Generate Diagnosis and Treatment Plan"):
                     st.write("---")
                     context += f"Case {i}: " + case.get('metadata', {}).get('text', 'No text available') + "\n\n"
             
-            prompt = f"""Given the following patient symptoms:
+            st.session_state.diagnosis = generate_response(symptoms, context)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+    else:
+        st.warning("Please enter the patient's symptoms.")
 {symptoms}
 
 And considering these similar cases from our database:
