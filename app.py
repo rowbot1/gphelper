@@ -2,8 +2,10 @@ import os
 import streamlit as st
 import numpy as np
 from dotenv import load_dotenv
+
 # Load environment variables
 load_dotenv()
+
 # Try to import required libraries
 try:
     import pinecone
@@ -12,6 +14,7 @@ try:
 except ImportError as e:
     st.error(f"Failed to import required library: {e}")
     st.stop()
+
 # Initialize Pinecone
 try:
     pinecone.init(api_key=os.getenv('PINECONE_API_KEY'), environment=os.getenv('PINECONE_ENVIRONMENT'))
@@ -19,23 +22,28 @@ try:
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {e}")
     st.stop()
+
 # Initialize Groq
 try:
     client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 except Exception as e:
     st.error(f"Failed to initialize Groq: {e}")
     st.stop()
+
 # Initialize the embedding model
 try:
     model = SentenceTransformer('all-mpnet-base-v2')
 except Exception as e:
     st.error(f"Failed to initialize SentenceTransformer: {e}")
     st.stop()
+
 def get_embedding(text):
     return model.encode(text).tolist()
+
 def query_pinecone(embedding):
     results = index.query(vector=embedding, top_k=5, include_metadata=True)
     return results['matches']
+
 def generate_response(prompt):
     try:
         completion = client.chat.completions.create(
@@ -57,6 +65,7 @@ def generate_response(prompt):
     except Exception as e:
         st.error(f"Failed to generate response: {e}")
         return None
+
 st.title("NHS GP Assistant")
 symptoms = st.text_area("Please enter the patient's symptoms:")
 if st.button("Generate Diagnosis and Treatment Plan"):
