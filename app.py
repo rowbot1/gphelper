@@ -88,13 +88,23 @@ with col1:
     duration = st.text_input("Duration of symptoms:")
     medical_history = st.text_area("Relevant medical history:")
 
-    patient_info = f"""
-    Symptoms: {symptoms}
-    Age: {age}
-    Gender: {gender}
-    Duration of symptoms: {duration}
-    Medical history: {medical_history}
-    ""
+    with col1:
+    st.subheader("Patient Information")
+    symptoms = st.text_area("Please enter the patient's symptoms:")
+    age = st.number_input("Patient's age:", min_value=0, max_value=120, value=30)
+    gender = st.selectbox("Patient's gender:", ["Male", "Female", "Other"])
+    duration = st.text_input("Duration of symptoms:")
+    medical_history = st.text_area("Relevant medical history:")
+
+    patient_info = f""
+Symptoms: {symptoms}
+Age: {age}
+Gender: {gender}
+Duration of symptoms: {duration}
+Medical history: {medical_history}
+"""
+
+    if st.button("Generate Diagnosis and Treatment Plan"):
 
     if st.button("Generate Diagnosis and Treatment Plan"):
         if symptoms:
