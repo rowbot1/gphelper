@@ -1,4 +1,4 @@
-mport os
+import os
 import streamlit as st
 import numpy as np
 from dotenv import load_dotenv
