@@ -1,10 +1,18 @@
 import os
 import streamlit as st
 import numpy as np
+import toml
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables (if you're still using .env for some configs)
 load_dotenv()
+
+# Load configuration from TOML file
+try:
+    config = toml.load("config.toml")
+except Exception as e:
+    st.error(f"Failed to load configuration: {e}")
+    st.stop()
 
 # Try to import required libraries
 try:
@@ -17,15 +25,18 @@ except ImportError as e:
 
 # Initialize Pinecone
 try:
-    pinecone.init(api_key=os.getenv('PINECONE_API_KEY'), environment=os.getenv('PINECONE_ENVIRONMENT'))
-    index = pinecone.Index(os.getenv('PINECONE_INDEX_NAME'))
+    pinecone.init(
+        api_key=config['pinecone']['api_key'],
+        environment=config['pinecone']['environment']
+    )
+    index = pinecone.Index(config['pinecone']['index_name'])
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {e}")
     st.stop()
 
 # Initialize Groq
 try:
-    client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+    client = Groq(api_key=config['groq']['api_key'])
 except Exception as e:
     st.error(f"Failed to initialize Groq: {e}")
     st.stop()
@@ -66,7 +77,7 @@ def generate_response(prompt):
         st.error(f"Failed to generate response: {e}")
         return None
 
-st.title("NHS GP Assistant")
+st.title(config['app']['name'])
 
 symptoms = st.text_area("Please enter the patient's symptoms:")
 
