@@ -46,7 +46,6 @@ def get_expanded_embedding(text):
     with torch.no_grad():
         base_embedding = base_model.encode(text, convert_to_tensor=True).to(device)
         expanded_embedding = embedding_expander(base_embedding).cpu().numpy()
-    st.write(f"Debug: Expanded embedding shape: {expanded_embedding.shape}")
     return expanded_embedding.tolist()
 
 def query_pinecone(embedding, similarity_threshold=0.01):
@@ -57,7 +56,6 @@ def query_pinecone(embedding, similarity_threshold=0.01):
     except Exception as e:
         st.sidebar.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
         return [], None
-
 
 def extract_relevant_info(similar_cases):
     relevant_info = ""
@@ -73,6 +71,52 @@ def generate_response(patient_info, similar_cases_info):
 
         user_prompt = f"""Please analyze the following patient case and similar cases:
 
+1. Patient Information:
+{patient_info}
+
+2. Similar Cases from Database:
+{similar_cases_info}
+
+3. Analysis Structure:
+   a) Relevant Information from Similar Cases: Summarize key points from the similar cases that are relevant to this patient's symptoms. Reference specific case numbers.
+   b) Possible Diagnosis: Provide potential diagnoses, explaining the reasoning behind each. Reference specific symptoms and similar cases that support these diagnoses.
+   c) Differential Diagnosis: Mention other conditions that might present similarly and explain why they are less likely, referencing similar cases if applicable.
+   d) Recommended Tests: Suggest diagnostic tests or examinations, referencing any tests mentioned in similar cases that were helpful.
+   e) Treatment Plan: Outline a treatment plan, including:
+      - Medications (if applicable), with dosages and duration
+      - Lifestyle modifications or self-care instructions
+      - Follow-up recommendations
+   f) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition, referencing similar cases if they showed any critical developments.
+   g) Patient Education: Provide information about the condition(s) for patient education, incorporating any useful educational points from similar cases.
+   h) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
+
+4. Important Notes:
+   - Always reference the specific case numbers when using information from the similar cases.
+   - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
+   - Emphasize the importance of clinical judgment and the need for in-person examination.
+   - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
+
+Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
+
+        completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_message,
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                }
+            ],
+            model="mixtral-8x7b-32768",
+            temperature=0.5,
+            max_tokens=1000,
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        st.error(f"Failed to generate response: {e}")
+        return None
 
 st.set_page_config(page_title="NHS GP Assistant", layout="wide")
 st.title("NHS GP Assistant")
@@ -88,23 +132,13 @@ with col1:
     duration = st.text_input("Duration of symptoms:")
     medical_history = st.text_area("Relevant medical history:")
 
-    with col1:
-    st.subheader("Patient Information")
-    symptoms = st.text_area("Please enter the patient's symptoms:")
-    age = st.number_input("Patient's age:", min_value=0, max_value=120, value=30)
-    gender = st.selectbox("Patient's gender:", ["Male", "Female", "Other"])
-    duration = st.text_input("Duration of symptoms:")
-    medical_history = st.text_area("Relevant medical history:")
-
-    patient_info = f""
+    patient_info = f"""
 Symptoms: {symptoms}
 Age: {age}
 Gender: {gender}
 Duration of symptoms: {duration}
 Medical history: {medical_history}
 """
-
-    if st.button("Generate Diagnosis and Treatment Plan"):
 
     if st.button("Generate Diagnosis and Treatment Plan"):
         if symptoms:
