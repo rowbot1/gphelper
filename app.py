@@ -3,7 +3,7 @@ import numpy as np
 
 # Try to import required libraries
 try:
-    import pinecone
+    from pinecone import Pinecone, ServerlessSpec
     from groq import Groq
     from sentence_transformers import SentenceTransformer
 except ImportError as e:
@@ -16,14 +16,18 @@ try:
     environment = st.secrets["pinecone"]["environment"]
     index_name = st.secrets["pinecone"]["index_name"]
     
-    pinecone.init(api_key=api_key, environment=environment)
-    if index_name not in pinecone.list_indexes():
-        pinecone.create_index(
+    pc = Pinecone(api_key=api_key)
+    if index_name not in [index['name'] for index in pc.list_indexes().indexes]:
+        pc.create_index(
             name=index_name,
             dimension=1536,  # Adjust this dimension based on your specific needs
-            metric='euclidean'
+            metric='euclidean',
+            spec=ServerlessSpec(
+                cloud=st.secrets.get("PINECONE_CLOUD", 'aws'),
+                region=st.secrets.get("PINECONE_REGION", 'us-west-2')
+            )
         )
-    index = pinecone.Index(index_name)
+    index = pc.index(index_name)
 except KeyError as e:
     st.error(f"Missing secret: {e}")
     st.stop()
