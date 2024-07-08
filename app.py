@@ -139,18 +139,6 @@ if st.button("Generate Diagnosis and Treatment Plan"):
             st.error(f"An error occurred: {e}")
     else:
         st.warning("Please enter the patient's symptoms.")
-{symptoms}
-
-And considering these similar cases from our database:
-{context}
-
-Provide a possible diagnosis and treatment plan. Make sure to reference the specific case numbers when using information from the similar cases."""
-            
-            st.session_state.diagnosis = generate_response(prompt)
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-    else:
-        st.warning("Please enter the patient's symptoms.")
 
 if st.session_state.diagnosis:
     st.subheader("Diagnosis and Treatment Plan")
