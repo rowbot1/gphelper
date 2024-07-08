@@ -1,39 +1,15 @@
 import streamlit as st
 import numpy as np
-
-# Try to import required libraries
-try:
-    from pinecone import Pinecone, Index, ServerlessSpec
-    from groq import Groq
-    from sentence_transformers import SentenceTransformer
-except ImportError as e:
-    st.error(f"Failed to import required library: {e}")
-    st.stop()
+from pinecone import Pinecone
+from groq import Groq
+from sentence_transformers import SentenceTransformer
+import torch
+import torch.nn as nn
 
 # Initialize Pinecone
 try:
-    api_key = st.secrets["pinecone"]["api_key"]
-    environment = st.secrets["pinecone"]["environment"]
-    index_name = st.secrets["pinecone"]["index_name"]
-
-    # Create Pinecone instance
-    pc = Pinecone(api_key=api_key)
-
-    # List and create index if not exists
-    if index_name not in [index.name for index in pc.list_indexes()]:
-        pc.create_index(
-            name=index_name,
-            dimension=768,  # Adjusted dimension to match the embedding model output
-            metric='cosine',  # Metric can be 'euclidean', 'cosine', etc.
-            spec=ServerlessSpec(
-                cloud=st.secrets.get("PINECONE_CLOUD", 'aws'),
-                region=st.secrets.get("PINECONE_REGION", 'us-west-2')
-            )
-        )
-    index = Index(pc, index_name)
-except KeyError as e:
-    st.error(f"Missing secret: {e}")
-    st.stop()
+    pc = Pinecone(api_key=st.secrets["pinecone"]["api_key"])
+    index = pc.Index(st.secrets["pinecone"]["index_name"])
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {e}")
     st.stop()
@@ -41,31 +17,46 @@ except Exception as e:
 # Initialize Groq
 try:
     client = Groq(api_key=st.secrets["groq"]["api_key"])
-except KeyError as e:
-    st.error(f"Missing secret: {e}")
-    st.stop()
 except Exception as e:
     st.error(f"Failed to initialize Groq: {e}")
     st.stop()
 
-# Initialize the embedding model
-try:
-    model = SentenceTransformer('all-mpnet-base-v2')
-except Exception as e:
-    st.error(f"Failed to initialize SentenceTransformer: {e}")
-    st.stop()
+# Initialize the embedding model and expander
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+base_model = SentenceTransformer('all-MiniLM-L6-v2').to(device)
 
-def get_embedding(text):
-    return model.encode(text).tolist()
+class EmbeddingExpander(nn.Module):
+    def __init__(self, input_dim=384, output_dim=3072):
+        super(EmbeddingExpander, self).__init__()
+        self.fc = nn.Linear(input_dim, output_dim)
+    
+    def forward(self, x):
+        return self.fc(x)
+
+embedding_expander = EmbeddingExpander().to(device)
+
+@st.cache_resource
+def load_models():
+    return base_model, embedding_expander
+
+base_model, embedding_expander = load_models()
+
+@st.cache_data
+def get_expanded_embedding(text):
+    with torch.no_grad():
+        base_embedding = base_model.encode(text, convert_to_tensor=True).to(device)
+        expanded_embedding = embedding_expander(base_embedding).cpu().numpy()
+    return expanded_embedding.tolist()
 
 def query_pinecone(embedding):
     try:
         results = index.query(vector=embedding, top_k=5, include_metadata=True)
         return results['matches']
     except Exception as e:
-        st.error(f"Error querying Pinecone: {e}")
+        st.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
         return []
 
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def generate_response(prompt):
     try:
         completion = client.chat.completions.create(
@@ -89,23 +80,30 @@ def generate_response(prompt):
         return None
 
 st.title(st.secrets["app"]["name"])
+
+if 'diagnosis' not in st.session_state:
+    st.session_state.diagnosis = None
+
 symptoms = st.text_area("Please enter the patient's symptoms:")
+
 if st.button("Generate Diagnosis and Treatment Plan"):
     if symptoms:
         try:
-            embedding = get_embedding(symptoms)
+            embedding = get_expanded_embedding(symptoms)
             similar_cases = query_pinecone(embedding)
-
-            context = "Similar cases:\n" + "\n".join([case.get('metadata', {}).get('text', 'No text available') for case in similar_cases])
+            if not similar_cases:
+                context = "No similar cases available."
+            else:
+                context = "Similar cases:\n" + "\n".join([case.get('metadata', {}).get('text', 'No text available') for case in similar_cases])
             prompt = f"Given the following patient symptoms:\n{symptoms}\n\nAnd considering these similar cases:\n{context}\n\nProvide a possible diagnosis and treatment plan."
-
-            response = generate_response(prompt)
-
-            if response:
-                st.subheader("Diagnosis and Treatment Plan")
-                st.write(response)
+            st.session_state.diagnosis = generate_response(prompt)
         except Exception as e:
             st.error(f"An error occurred: {e}")
     else:
         st.warning("Please enter the patient's symptoms.")
+
+if st.session_state.diagnosis:
+    st.subheader("Diagnosis and Treatment Plan")
+    st.write(st.session_state.diagnosis)
+
 st.sidebar.warning("Note: This app is for educational purposes only. Always consult with a qualified medical professional for accurate diagnoses and treatment plans.")
