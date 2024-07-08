@@ -49,17 +49,15 @@ def get_expanded_embedding(text):
     st.write(f"Debug: Expanded embedding shape: {expanded_embedding.shape}")
     return expanded_embedding.tolist()
 
-def query_pinecone(embedding, similarity_threshold=0.01):  # Lowered threshold significantly
+def query_pinecone(embedding, similarity_threshold=0.01):
     try:
-        results = index.query(vector=embedding, top_k=20, include_metadata=True)  # Increased top_k
-        st.sidebar.write(f"Debug: Raw Pinecone results: {results}")
+        results = index.query(vector=embedding, top_k=20, include_metadata=True)
         filtered_results = [match for match in results['matches'] if match['score'] >= similarity_threshold]
-        st.sidebar.write(f"Debug: Filtered results: {filtered_results}")
-        return filtered_results
+        return filtered_results, results
     except Exception as e:
         st.sidebar.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
-        st.sidebar.error(f"Detailed error: {str(e)}")
-        return []
+        return [], None
+
 
 def extract_relevant_info(similar_cases):
     relevant_info = ""
@@ -75,113 +73,68 @@ def generate_response(patient_info, similar_cases_info):
 
         user_prompt = f"""Please analyze the following patient case and similar cases:
 
-1. Patient Information:
-{patient_info}
 
-2. Similar Cases from Database:
-{similar_cases_info}
+st.set_page_config(page_title="NHS GP Assistant", layout="wide")
+st.title("NHS GP Assistant")
 
-3. Analysis Structure:
-   a) Relevant Information from Similar Cases: Summarize key points from the similar cases that are relevant to this patient's symptoms. Reference specific case numbers.
-   b) Possible Diagnosis: Provide potential diagnoses, explaining the reasoning behind each. Reference specific symptoms and similar cases that support these diagnoses.
-   c) Differential Diagnosis: Mention other conditions that might present similarly and explain why they are less likely, referencing similar cases if applicable.
-   d) Recommended Tests: Suggest diagnostic tests or examinations, referencing any tests mentioned in similar cases that were helpful.
-   e) Treatment Plan: Outline a treatment plan, including:
-      - Medications (if applicable), with dosages and duration
-      - Lifestyle modifications or self-care instructions
-      - Follow-up recommendations
-   f) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition, referencing similar cases if they showed any critical developments.
-   g) Patient Education: Provide information about the condition(s) for patient education, incorporating any useful educational points from similar cases.
-   h) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
+# Create two columns
+col1, col2 = st.columns([2, 1])
 
-4. Important Notes:
-   - Always reference the specific case numbers when using information from the similar cases.
-   - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
-   - Emphasize the importance of clinical judgment and the need for in-person examination.
-   - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
+with col1:
+    st.subheader("Patient Information")
+    symptoms = st.text_area("Please enter the patient's symptoms:")
+    age = st.number_input("Patient's age:", min_value=0, max_value=120, value=30)
+    gender = st.selectbox("Patient's gender:", ["Male", "Female", "Other"])
+    duration = st.text_input("Duration of symptoms:")
+    medical_history = st.text_area("Relevant medical history:")
 
-Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
+    patient_info = f"""
+    Symptoms: {symptoms}
+    Age: {age}
+    Gender: {gender}
+    Duration of symptoms: {duration}
+    Medical history: {medical_history}
+    """
 
-        completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_message,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
+    if st.button("Generate Diagnosis and Treatment Plan"):
+        if symptoms:
+            with st.spinner("Analyzing patient information..."):
+                embedding = get_expanded_embedding(patient_info)
+                similar_cases, raw_results = query_pinecone(embedding)
+                
+                if not similar_cases:
+                    similar_cases_info = "No similar cases available."
+                else:
+                    similar_cases_info = extract_relevant_info(similar_cases)
+                
+                st.session_state.diagnosis = generate_response(patient_info, similar_cases_info)
+                st.session_state.debug_info = {
+                    "similar_cases": similar_cases_info,
+                    "raw_results": raw_results
                 }
-            ],
-            model="mixtral-8x7b-32768",
-            temperature=0.5,
-            max_tokens=1000,
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        st.error(f"Failed to generate response: {e}")
-        return None
+        else:
+            st.warning("Please enter the patient's symptoms.")
 
-def check_pinecone_index():
-    try:
-        stats = index.describe_index_stats()
-        st.sidebar.write(f"Pinecone index stats: {stats}")
-    except Exception as e:
-        st.sidebar.error(f"Failed to get Pinecone index stats: {e}")
+with col2:
+    if 'diagnosis' in st.session_state and st.session_state.diagnosis:
+        st.subheader("Diagnosis and Treatment Plan")
+        st.write(st.session_state.diagnosis)
 
-st.title(st.secrets["app"]["name"])
+        # Feedback mechanism
+        feedback = st.radio("Was this diagnosis helpful?", ("Yes", "No"))
+        if feedback == "No":
+            improvement = st.text_area("Please provide feedback on how we can improve:")
+            if st.button("Submit Feedback"):
+                # Here you would typically save this feedback to a database
+                st.success("Thank you for your feedback!")
 
-# Check Pinecone index at the start
-check_pinecone_index()
-
-if 'diagnosis' not in st.session_state:
-    st.session_state.diagnosis = None
-
-st.subheader("Patient Information")
-symptoms = st.text_area("Please enter the patient's symptoms:")
-age = st.number_input("Patient's age:", min_value=0, max_value=120, value=30)
-gender = st.selectbox("Patient's gender:", ["Male", "Female", "Other"])
-duration = st.text_input("Duration of symptoms:")
-medical_history = st.text_area("Relevant medical history:")
-
-patient_info = f"""
-Symptoms: {symptoms}
-Age: {age}
-Gender: {gender}
-Duration of symptoms: {duration}
-Medical history: {medical_history}
-"""
-
-if st.button("Generate Diagnosis and Treatment Plan"):
-    if symptoms:
-        try:
-            embedding = get_expanded_embedding(patient_info)
-            similar_cases = query_pinecone(embedding)
-            
-            st.subheader("Similar Cases from Database:")
-            if not similar_cases:
-                st.write("No sufficiently similar cases found in the database.")
-                similar_cases_info = "No similar cases available."
-            else:
-                similar_cases_info = extract_relevant_info(similar_cases)
-                st.write(similar_cases_info)
-            
-            st.session_state.diagnosis = generate_response(patient_info, similar_cases_info)
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-    else:
-        st.warning("Please enter the patient's symptoms.")
-
-if st.session_state.diagnosis:
-    st.subheader("Diagnosis and Treatment Plan")
-    st.write(st.session_state.diagnosis)
-
-    # Feedback mechanism
-    feedback = st.radio("Was this diagnosis helpful?", ("Yes", "No"))
-    if feedback == "No":
-        improvement = st.text_area("Please provide feedback on how we can improve:")
-        if st.button("Submit Feedback"):
-            # Here you would typically save this feedback to a database
-            st.success("Thank you for your feedback!")
+# Debug information in an expander
+with st.expander("Debug Information", expanded=False):
+    if 'debug_info' in st.session_state:
+        st.subheader("Similar Cases from Database:")
+        st.write(st.session_state.debug_info["similar_cases"])
+        
+        st.subheader("Raw Pinecone Results:")
+        st.write(st.session_state.debug_info["raw_results"])
 
 st.sidebar.warning("Note: This app is for educational purposes only. Always consult with a qualified medical professional for accurate diagnoses and treatment plans.")
