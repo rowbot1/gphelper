@@ -12,10 +12,14 @@ except ImportError as e:
 
 # Initialize Pinecone
 try:
-    pc = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
-    if st.secrets["PINECONE_INDEX_NAME"] not in pc.list_indexes().names():
+    api_key = st.secrets["pinecone"]["api_key"]
+    environment = st.secrets["pinecone"]["environment"]
+    index_name = st.secrets["pinecone"]["index_name"]
+    
+    pc = Pinecone(api_key=api_key)
+    if index_name not in pc.list_indexes().names():
         pc.create_index(
-            name=st.secrets["PINECONE_INDEX_NAME"],
+            name=index_name,
             dimension=1536,  # Adjust this dimension based on your specific needs
             metric='euclidean',
             spec=ServerlessSpec(
@@ -23,14 +27,20 @@ try:
                 region=st.secrets.get("PINECONE_REGION", 'us-west-2')
             )
         )
-    index = pc.index(st.secrets["PINECONE_INDEX_NAME"])
+    index = pc.index(index_name)
+except KeyError as e:
+    st.error(f"Missing secret: {e}")
+    st.stop()
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {e}")
     st.stop()
 
 # Initialize Groq
 try:
-    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+    client = Groq(api_key=st.secrets["groq"]["api_key"])
+except KeyError as e:
+    st.error(f"Missing secret: {e}")
+    st.stop()
 except Exception as e:
     st.error(f"Failed to initialize Groq: {e}")
     st.stop()
@@ -71,7 +81,7 @@ def generate_response(prompt):
         st.error(f"Failed to generate response: {e}")
         return None
 
-st.title("NHS GP Assistant")
+st.title(st.secrets["app"]["name"])
 symptoms = st.text_area("Please enter the patient's symptoms:")
 if st.button("Generate Diagnosis and Treatment Plan"):
     if symptoms:
