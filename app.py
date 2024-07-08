@@ -1,14 +1,9 @@
-import os
 import streamlit as st
 import numpy as np
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Try to import required libraries
 try:
-    import pinecone
+    from pinecone import Pinecone, ServerlessSpec
     from groq import Groq
     from sentence_transformers import SentenceTransformer
 except ImportError as e:
@@ -17,15 +12,25 @@ except ImportError as e:
 
 # Initialize Pinecone
 try:
-    pinecone.init(api_key=os.getenv('PINECONE_API_KEY'), environment=os.getenv('PINECONE_ENVIRONMENT'))
-    index = pinecone.Index(os.getenv('PINECONE_INDEX_NAME'))
+    pc = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
+    if st.secrets["PINECONE_INDEX_NAME"] not in pc.list_indexes().names():
+        pc.create_index(
+            name=st.secrets["PINECONE_INDEX_NAME"],
+            dimension=1536,  # Adjust this dimension based on your specific needs
+            metric='euclidean',
+            spec=ServerlessSpec(
+                cloud=st.secrets.get("PINECONE_CLOUD", 'aws'),
+                region=st.secrets.get("PINECONE_REGION", 'us-west-2')
+            )
+        )
+    index = pc.index(st.secrets["PINECONE_INDEX_NAME"])
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {e}")
     st.stop()
 
 # Initialize Groq
 try:
-    client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except Exception as e:
     st.error(f"Failed to initialize Groq: {e}")
     st.stop()
