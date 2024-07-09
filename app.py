@@ -82,22 +82,20 @@ def generate_response(patient_info, similar_cases_info):
 {similar_cases_info}
 
 3. Analysis Structure:
-   a) Relevant Information from Similar Cases: Summarize key points from the similar cases that are relevant to this patient's symptoms. Reference specific case numbers.
-   b) Possible Diagnosis: Provide potential diagnoses, explaining the reasoning behind each. Reference specific symptoms and similar cases that support these diagnoses.
-   c) Differential Diagnosis: Mention other conditions that might present similarly and explain why they are less likely, referencing similar cases if applicable.
-   d) Recommended Tests: Suggest diagnostic tests or examinations, referencing any tests mentioned in similar cases that were helpful.
-   e) Treatment Plan: Outline a treatment plan, including:
+   a) Possible Diagnosis: Provide potential diagnoses, explaining the reasoning behind each. Reference specific symptoms that support these diagnoses.
+   b) Differential Diagnosis: Mention other conditions that might present similarly and explain why they are less likely
+   c) Recommended Tests: Suggest diagnostic tests or examinations, referencing any tests mentioned in similar cases that were helpful.
+   d) Treatment Plan: Outline a treatment plan, including:
       - Medications (if applicable), with dosages and duration
       - Lifestyle modifications or self-care instructions
       - Follow-up recommendations
-   f) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition, referencing similar cases if they showed any critical developments.
-   g) Patient Education: Provide information about the condition(s) for patient education, incorporating any useful educational points from similar cases.
-   h) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
+   e) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition, referencing similar cases if they showed any critical developments.
+   f) Patient Education: Provide information about the condition(s) for patient education, incorporating any useful educational points from similar cases.
+   g) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
 
 4. Important Notes:
-   - Always reference the specific case numbers when using information from the similar cases.
    - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
-   - Emphasize the importance of clinical judgment and the need for in-person examination.
+   - If necessary emphasize the importance of clinical judgment and the need for in-person examination.
    - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
 
 Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
