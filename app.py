@@ -8,7 +8,6 @@ from pinecone import Pinecone
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 import torch
-import torch.nn as nn
 
 # Initialize Pinecone
 try:
@@ -25,32 +24,21 @@ except Exception as e:
     st.error(f"Failed to initialize Groq: {e}")
     st.stop()
 
-# Initialize the embedding model and expander
+# Initialize the embedding model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-base_model = SentenceTransformer('all-MiniLM-L6-v2').to(device)
-
-class EmbeddingExpander(nn.Module):
-    def __init__(self, input_dim=384, output_dim=3072):
-        super(EmbeddingExpander, self).__init__()
-        self.fc = nn.Linear(input_dim, output_dim)
-    
-    def forward(self, x):
-        return self.fc(x)
-
-embedding_expander = EmbeddingExpander().to(device)
+base_model = SentenceTransformer('all-mpnet-base-v2').to(device)
 
 @st.cache_resource
 def load_models():
-    return base_model, embedding_expander
+    return base_model
 
-base_model, embedding_expander = load_models()
+base_model = load_models()
 
 @st.cache_data
-def get_expanded_embedding(text):
+def get_embedding(text):
     with torch.no_grad():
-        base_embedding = base_model.encode(text, convert_to_tensor=True).to(device)
-        expanded_embedding = embedding_expander(base_embedding).cpu().numpy()
-    return expanded_embedding.tolist()
+        embedding = base_model.encode(text, convert_to_tensor=True).cpu().numpy()
+    return embedding.tolist()
 
 def query_pinecone(embedding, similarity_threshold=0.01):
     try:
@@ -145,7 +133,7 @@ Medical history: {medical_history}
     if st.button("Generate Diagnosis and Treatment Plan"):
         if symptoms:
             with st.spinner("Analyzing patient information..."):
-                embedding = get_expanded_embedding(patient_info)
+                embedding = get_embedding(patient_info)
                 similar_cases, raw_results = query_pinecone(embedding)
                 
                 if not similar_cases:
