@@ -40,53 +40,46 @@ def get_embedding(text):
 def query_pinecone(embedding, similarity_threshold=0.01):
     try:
         results = index.query(vector=embedding, top_k=20, include_metadata=True)
-        filtered_results = [match for match in results['matches'] if match['score'] >= similarity_threshold]
-        return filtered_results, results
+        filtered_results = [match['score'] for match in results['matches'] if match['score'] >= similarity_threshold]
+        return filtered_results
     except Exception as e:
-        st.sidebar.warning(f"Failed to query Pinecone: {e}. Proceeding without similar cases.")
-        return [], None
-
-def extract_relevant_info(similar_cases):
-    relevant_info = ""
-    for i, case in enumerate(similar_cases, 1):
-        case_text = case.get('metadata', {}).get('text', 'No text available')
-        relevant_info += f"Case {i} (Similarity: {case['score']:.4f}):\n{case_text}\n\n"
-    return relevant_info
+        st.sidebar.warning(f"Failed to query Pinecone: {e}. Proceeding without RAG scores.")
+        return []
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def generate_response(patient_info, similar_cases_info):
+def generate_response(patient_info, rag_scores):
     try:
-        system_message = """You are an AI assistant for NHS GPs, designed to provide detailed analysis of patient conditions based on symptoms and similar cases. Your responses should be structured, comprehensive, and medically accurate, while emphasizing the importance of clinical judgment and in-person examination. Always reference the provided similar cases in your analysis."""
+        system_message = """You are an AI assistant for NHS GPs, designed to provide detailed analysis of patient conditions based on symptoms. Your responses should be structured, comprehensive, and medically accurate, while emphasizing the importance of clinical judgment and in-person examination."""
 
-        user_prompt = f"""Please analyze the following patient case and similar cases:
+        user_prompt = f"""Please analyze the following patient case:
 
 1. Patient Information:
 {patient_info}
 
-2. Similar Cases from Database:
-{similar_cases_info}
+2. RAG Scores:
+{rag_scores}
 
 3. Analysis Structure:
    a) Possible Diagnosis: Provide potential diagnoses, explaining the reasoning behind each. Reference specific symptoms that support these diagnoses.
    b) Differential Diagnosis: Mention other conditions that might present similarly and explain why they are less likely
-   c) Recommended Tests: Suggest diagnostic tests or examinations, referencing any tests mentioned in similar cases that were helpful.
+   c) Recommended Tests: Suggest diagnostic tests or examinations that would be helpful.
    d) Treatment Plan: Outline a treatment plan, including:
       - Medications (if applicable), with dosages and duration
       - Lifestyle modifications or self-care instructions
       - Follow-up recommendations
-   e) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition, referencing similar cases if they showed any critical developments.
-   f) Patient Education: Provide information about the condition(s) for patient education, incorporating any useful educational points from similar cases.
+   e) Red Flags: Highlight any symptoms or factors that may indicate a more serious condition.
+   f) Patient Education: Provide information about the condition(s) for patient education.
    g) ICD-10 Codes: Provide relevant ICD-10 codes for the potential diagnoses.
 
 4. Important Notes:
    - If the symptoms are vague or insufficient for a confident diagnosis, clearly state this and recommend further evaluation.
-   - If necessary emphasize the importance of clinical judgment and the need for in-person examination.
+   - Emphasize the importance of clinical judgment and the need for in-person examination.
    - If any critical information is missing, note what additional details would be helpful for a more accurate assessment.
 
 Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
 
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": user_prompt}
@@ -125,18 +118,10 @@ Medical history: {medical_history}
         if symptoms:
             with st.spinner("Analyzing patient information..."):
                 embedding = get_embedding(patient_info)
-                similar_cases, raw_results = query_pinecone(embedding)
+                rag_scores = query_pinecone(embedding)
                 
-                if not similar_cases:
-                    similar_cases_info = "No similar cases available."
-                else:
-                    similar_cases_info = extract_relevant_info(similar_cases)
-                
-                st.session_state.diagnosis = generate_response(patient_info, similar_cases_info)
-                st.session_state.debug_info = {
-                    "similar_cases": similar_cases_info,
-                    "raw_results": raw_results
-                }
+                st.session_state.diagnosis = generate_response(patient_info, rag_scores)
+                st.session_state.rag_scores = rag_scores
         else:
             st.warning("Please enter the patient's symptoms.")
 
@@ -145,6 +130,13 @@ with col2:
         st.subheader("Diagnosis and Treatment Plan")
         st.write(st.session_state.diagnosis)
 
+        st.subheader("RAG Scores")
+        if st.session_state.rag_scores:
+            for i, score in enumerate(st.session_state.rag_scores, 1):
+                st.write(f"Score {i}: {score:.4f}")
+        else:
+            st.write("No RAG scores available.")
+
         # Feedback mechanism
         feedback = st.radio("Was this diagnosis helpful?", ("Yes", "No"))
         if feedback == "No":
@@ -152,14 +144,5 @@ with col2:
             if st.button("Submit Feedback"):
                 # Here you would typically save this feedback to a database
                 st.success("Thank you for your feedback!")
-
-# Debug information in an expander
-with st.expander("Debug Information", expanded=False):
-    if 'debug_info' in st.session_state:
-        st.subheader("Similar Cases from Database:")
-        st.write(st.session_state.debug_info["similar_cases"])
-        
-        st.subheader("Raw Pinecone Results:")
-        st.write(st.session_state.debug_info["raw_results"])
 
 st.sidebar.warning("Note: This app is for educational purposes only. Always consult with a qualified medical professional for accurate diagnoses and treatment plans.")
