@@ -1,13 +1,12 @@
 import streamlit as st
+from openai import OpenAI
+import numpy as np
+from pinecone import Pinecone
+from sentence_transformers import SentenceTransformer
+import torch
 
 # Set page config at the very beginning
 st.set_page_config(page_title="NHS GP Assistant", layout="wide")
-
-import numpy as np
-from pinecone import Pinecone
-from groq import Groq
-from sentence_transformers import SentenceTransformer
-import torch
 
 # Initialize Pinecone
 try:
@@ -17,20 +16,18 @@ except Exception as e:
     st.error(f"Failed to initialize Pinecone: {e}")
     st.stop()
 
-# Initialize Groq
+# Initialize OpenAI
 try:
-    client = Groq(api_key=st.secrets["groq"]["api_key"])
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 except Exception as e:
-    st.error(f"Failed to initialize Groq: {e}")
+    st.error(f"Failed to initialize OpenAI: {e}")
     st.stop()
 
 # Initialize the embedding model
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-base_model = SentenceTransformer('all-mpnet-base-v2').to(device)
-
 @st.cache_resource
 def load_models():
-    return base_model
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return SentenceTransformer('all-mpnet-base-v2').to(device)
 
 base_model = load_models()
 
@@ -89,19 +86,13 @@ def generate_response(patient_info, similar_cases_info):
 Please provide your analysis in a clear, structured format, using medical terminology appropriately but also ensuring the content is understandable to GPs of varying experience levels."""
 
         completion = client.chat.completions.create(
+            model="gpt-4",
             messages=[
-                {
-                    "role": "system",
-                    "content": system_message,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                }
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_prompt}
             ],
-            model="mixtral-8x7b-32768",
             temperature=0.5,
-            max_tokens=1000,
+            max_tokens=1000
         )
         return completion.choices[0].message.content
     except Exception as e:
