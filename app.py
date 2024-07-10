@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 import torch
 
 # Set page config at the very beginning
-st.set_page_config(page_title="NHS GP Assistant", layout="wide")
+st.set_page_config(page_title=st.secrets["app"]["name"], layout="wide")
 
 # Initialize Pinecone
 try:
@@ -100,7 +100,7 @@ Please provide your analysis in a clear, structured format, using medical termin
         return None
 
 # Main app
-st.title("NHS GP Assistant")
+st.title(st.secrets["app"]["name"])
 
 # Create two columns
 col1, col2 = st.columns([2, 1])
