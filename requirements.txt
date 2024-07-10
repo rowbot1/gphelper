@@ -4,3 +4,4 @@ python-dotenv
 pinecone-client
 sentence-transformers
 groq
+openai
